@@ -3040,7 +3040,6 @@ var buf: RawByteString;
 {$ifdef HASCPUIDX64} var cpu: TX64CpuFeatures; {$endif}
 begin
   SetLength(buf,16 shl 20); // 16MB
-  Validate({rtl=}true);
   {$ifdef HASCPUIDX64} // activate and validate SSE2 + AVX branches
   cpu := CPUIDX64;
   CPUIDX64 := []; // default SSE2 128-bit process
@@ -3053,8 +3052,12 @@ begin
   {$endif FPC}
   CPUIDX64 := cpu; // there is no AVX2 move/fillchar (still 256-bit wide)
   if (cpu<>[]) and (cpu<>[cpuAvx]) and (cpu<>[cpuAvx,cpuAvx2]) then
-  {$endif HASCPUIDX64}
     Validate;
+  // no Validate(true): RedirectCode(@System.FillChar,@FillcharFast)
+  {$else}
+  Validate({rtl=}true);
+  Validate(false);
+  {$endif HASCPUIDX64}
 end;
 {$endif CPUINTEL}
 
@@ -4383,6 +4386,8 @@ begin
   CheckEqual(TestAddFloatStr('12.3e 230'),'12.3e');
   CheckEqual(TestAddFloatStr('12.3f230'),'12.3');
   CheckEqual(TestAddFloatStr('12.3E23.0'),'12.3E23');
+  CheckEqual(TestAddFloatStr('-.01'),'-0.01'); // ODBC numeric output
+  CheckEqual(TestAddFloatStr('.0002'),'0.0002'); // ODBC numeric output
   CheckEqual(OctToBin(''),'');
   CheckEqual(OctToBin('123'),'123');
   CheckEqual(OctToBin('\\123'),'\123');
@@ -4511,6 +4516,11 @@ begin
   Check(u='40640.5028819444',u);
   e := 40640.5028819444;
   CheckSame(d,e,1e-11);
+  Check(IsAnsiCompatible('t'));
+  Check(IsAnsiCompatible('te'));
+  Check(IsAnsiCompatible('tes'));
+  Check(IsAnsiCompatible('test'));
+  Check(IsAnsiCompatible('teste'));
   CheckDoubleToShort(0,'0');
   CheckDoubleToShort(1,'1');
   CheckDoubleToShort(-1,'-1');
@@ -4676,6 +4686,7 @@ begin
     u := string(a);
     CheckEqual(TestAddFloatStr(s),s);
     Check(SysUtils.IntToStr(k)=u);
+    Check(IsAnsiCompatible(s));
     Check(Int64ToUtf8(k)=s);
     Check(IntToString(k)=u);
     Check(format('%d',[k])=u);
@@ -20396,7 +20407,6 @@ begin
   fId := aId;
   fIsError := false;
   fHttpClient := TDDDThreadsHttpClient.Create('127.0.0.1', HTTP_DEFAULTPORT);
-  fHttpClient.SetUser('Admin', 'synopse');
 end;
 
 destructor TDDDThreadsThread.Destroy;
@@ -20411,6 +20421,9 @@ var
   test: TDDDTest;
   success: boolean;
 begin
+  fHttpClient.SetUser('Admin', 'synopse');
+  for i := 1 to 15000 do
+    fHttpClient.ServerTimestampSynchronize; // calls root/timestamp
   test := TDDDTest.Create;
   try
     success := true;
